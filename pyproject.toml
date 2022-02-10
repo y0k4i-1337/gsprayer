@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "gsprayer"
+version = "0.1.0"
+description = "User enumeration and password spraying aimed at G-Suite"
+authors = ["Mayk <7395296+yok4i@users.noreply.github.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+webdriver-manager = "^3.5.2"
+selenium = {version = "^4.1.0", allow-prereleases = true}
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
