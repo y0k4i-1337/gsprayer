@@ -95,6 +95,11 @@ Perform password spraying using a proxy and waiting 30 minutes between each pass
 poetry run ./gsprayer.py -r 1 -U emails.txt -P passwords.txt --proxy 127.0.0.1:9050 spray --lockout 30
 ```
 
+### Note
+
+If you are using a proxy with a protocol other than HTTP, you should specify the schema like `socks5://127.0.0.1:9050`.
+
+
 ## Versioning
 
 We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/yok4i/gsprayer/tags). 
