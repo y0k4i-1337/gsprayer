@@ -63,6 +63,7 @@ optional arguments:
   --headless            Run in headless mode
   --proxy PROXY         Proxy to pass traffic through: <ip:port>
   --wait WAIT           Time to wait (in seconds) when looking for DOM elements (default: 3)
+  --jitter JITTER       Max jitter (in seconds) to be added to wait time (default: 0)
   -v, --verbose         Verbose output
 
 subcommands:

