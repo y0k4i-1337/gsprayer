@@ -12,7 +12,8 @@ idna==3.3; python_version >= "3.7" and python_full_version < "3.0.0" and python_
 outcome==1.1.0; python_version >= "3.7" and python_version < "4.0"
 pycparser==2.21; python_version >= "3.7" and python_full_version < "3.0.0" and os_name == "nt" and implementation_name != "pypy" and python_version < "4.0" or os_name == "nt" and implementation_name != "pypy" and python_version >= "3.7" and python_version < "4.0" and python_full_version >= "3.4.0"
 pyopenssl==22.0.0; python_version >= "3.7" and python_full_version < "3.0.0" and python_version < "4.0" or python_full_version >= "3.6.0" and python_version < "4" and python_version >= "3.7"
-requests==2.27.1; python_version >= "3.6" and python_full_version < "3.0.0" or python_full_version >= "3.6.0" and python_version >= "3.6"
+random-user-agent==1.0.1
+requests==2.27.1; (python_version >= "2.7" and python_full_version < "3.0.0") or (python_full_version >= "3.6.0")
 selenium==4.1.0; python_version >= "3.7" and python_version < "4.0"
 sniffio==1.2.0; python_version >= "3.7" and python_version < "4.0"
 sortedcontainers==2.4.0; python_version >= "3.7" and python_version < "4.0"

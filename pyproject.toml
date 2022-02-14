@@ -9,6 +9,8 @@ license = "MIT"
 python = "^3.9"
 webdriver-manager = "^3.5.2"
 selenium = {version = "^4.1.0", allow-prereleases = true}
+requests = "^2.27.1"
+random-user-agent = "^1.0.1"
 
 [tool.poetry.dev-dependencies]
 
