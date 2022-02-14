@@ -43,7 +43,8 @@ Use `-h` to show the help menu
 ```
 poetry run ./gsprayer.py -h
 
-usage: gsprayer.py [-h] [-t TARGET] (-u USERNAME | -U FILE) [-o OUTPUT] [-r N] [--headless] [--proxy PROXY] [--wait WAIT] [-v]
+usage: gsprayer.py [-h] [-t TARGET] [-d {chrome,firefox}] (-u USERNAME | -U FILE) [-o OUTPUT] [-r N] [-x PROXY] [--sleep SLEEP] [--wait WAIT] [--jitter JITTER] [--slack SLACK]
+                   [-H] [-s] [--rua] [-v]
                    {enum,spray} ...
 
 G-Suite Password Sprayer.
@@ -52,6 +53,8 @@ optional arguments:
   -h, --help            show this help message and exit
   -t TARGET, --target TARGET
                         Target URL (default: https://accounts.google.com/)
+  -d {chrome,firefox}, --driver {chrome,firefox}
+                        Webdriver to be used (default: chrome)
   -u USERNAME, --username USERNAME
                         Single username
   -U FILE, --usernames FILE
@@ -60,11 +63,14 @@ optional arguments:
                         Output file (default depends on subcommand)
   -r N, --reset-after N
                         Reset browser after N attempts (default: 1)
-  --headless            Run in headless mode
-  --proxy PROXY         Proxy to pass traffic through: <ip:port>
+  -x PROXY, --proxy PROXY
+                        Proxy to pass traffic through: <scheme://ip:port>
+  --sleep SLEEP         Sleep time (in seconds) between each iteration (default: 0)
   --wait WAIT           Time to wait (in seconds) when looking for DOM elements (default: 3)
   --jitter JITTER       Max jitter (in seconds) to be added to wait time (default: 0)
   --slack SLACK         Slack webhook for sending notifications (default: None)
+  -H, --headless        Run in headless mode
+  -s, --shuffle         Shuffle user list
   --rua                 Use random user-agent
   -v, --verbose         Verbose output
 
@@ -74,7 +80,6 @@ subcommands:
   {enum,spray}          additional help
     enum                Perform user enumeration
     spray               Perform password spraying
-
 ```
 
 There is also help menu for each subcommand:

