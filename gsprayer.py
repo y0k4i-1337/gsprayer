@@ -424,7 +424,7 @@ def enum(args, username_list):
             print("[ERROR] %s" % e)
             continue
 
-        sleep(1)
+        wait(max(args.wait/2, 1), args.jitter)
         # Check if captcha was activated
         element = elements["captcha"]
         element_pwd = elements["password"]
@@ -432,21 +432,21 @@ def enum(args, username_list):
         if captcha and browser.is_visible(captcha):
             need_interaction = True
             captcha_counter = 0
-            while need_interaction and captcha_counter <= 60:
+            while need_interaction and captcha_counter <= args.captchatimeout:
                 print(
                     "%s[Captcha Triggered] Solve it in %d seconds%s"
-                    % (text_colors.yellow, 60 - captcha_counter, text_colors.reset),
+                    % (text_colors.yellow, args.captchatimeout - captcha_counter, text_colors.reset),
                     end="\r",
                 )
-                sleep(2)
-                captcha_counter += 2
+                sleep(1)
+                captcha_counter += 1
                 need_interaction = (
                     False
                     if browser.find_element(element_pwd["type"], element_pwd["value"])
                     else True
                 )
             # No user interaction
-            if captcha_counter > 60:
+            if captcha_counter > captchatimeout:
                 print(
                     "%s[Invalid Captcha] %s%s"
                     % (text_colors.yellow, username, text_colors.reset)
@@ -542,24 +542,25 @@ def spray(args, username_list, password_list):
                 print("[ERROR] %s" % e)
                 continue
 
-            sleep(1)
+            wait(max(args.wait/2, 1), args.jitter)
 
             # Check if captcha was activated
             element = elements["captcha"]
             element_pwd = elements["password"]
             captcha = browser.find_element(element["type"], element["value"])
-            if captcha:
+            pwdfield = browser.find_element(element_pwd["type"], element_pwd["value"])
+            if not pwdfield and captcha and browser.is_visible(captcha):
                 need_interaction = True
                 captcha_counter = 0
                 try:
-                    while need_interaction and captcha_counter <= 10:
+                    while need_interaction and captcha_counter <= args.captchatimeout:
                         print(
                             "%s[Captcha Triggered] Solve it in %d seconds%s"
-                            % (text_colors.yellow, 10 - captcha_counter, text_colors.reset),
+                            % (text_colors.yellow, args.captchatimeout - captcha_counter, text_colors.reset),
                             end="\r",
                         )
-                        sleep(2)
-                        captcha_counter += 2
+                        sleep(1)
+                        captcha_counter += 1
                         need_interaction = (
                             False
                             if browser.find_element(
@@ -570,7 +571,7 @@ def spray(args, username_list, password_list):
                 except KeyboardInterrupt:
                     pass
                 # No user interaction
-                if captcha_counter > 10:
+                if captcha_counter > args.captchatimeout:
                     print(
                         "%s[Invalid Captcha] %s%s"
                         % (text_colors.yellow, username, text_colors.reset)
@@ -739,6 +740,13 @@ if __name__ == "__main__":
         help="Max jitter (in seconds) to be added to wait time (default: %(default)s)",
         default=0,
         required=False,
+    )
+    parser.add_argument(
+        "--captcha-timeout",
+        type=int,
+        help="Time to wait (in seconds) for solving captcha (default: %(default)s)",
+        default=30,
+        dest="captchatimeout",
     )
     parser.add_argument(
         "--slack",
